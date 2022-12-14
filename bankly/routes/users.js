@@ -4,7 +4,8 @@ const User = require('../models/user');
 const express = require('express');
 const router = new express.Router();
 const ExpressError = require('../helpers/expressError');
-const { authUser, requireLogin, requireAdmin } = require('../middleware/auth');
+const { authUser, requireLogin, requireAdmin, ensureAdminOrUser } = require('../middleware/auth');
+
 
 /** GET /
  *
@@ -42,6 +43,10 @@ router.get('/:username', authUser, requireLogin, async function(
 ) {
   try {
     let user = await User.get(req.params.username);
+    //Bug #1 return 404 if user not found
+    if (!user) {
+      throw new ExpressError("User not found", 404);
+    }
     return res.json({ user });
   } catch (err) {
     return next(err);
@@ -63,7 +68,7 @@ router.get('/:username', authUser, requireLogin, async function(
  *
  */
 
-router.patch('/:username', authUser, requireLogin, requireAdmin, async function(
+router.patch('/:username', authUser, ensureAdminOrUser, async function(
   req,
   res,
   next
@@ -75,6 +80,9 @@ router.patch('/:username', authUser, requireLogin, requireAdmin, async function(
 
     // get fields to change; remove token so we don't try to change it
     let fields = { ...req.body };
+    if (fields.username || fields.password || fields.admin) {
+      throw new ExpressError("Cannot update username, password, or admin status", 401);
+    }
     delete fields._token;
 
     let user = await User.update(req.params.username, fields);

@@ -34,6 +34,8 @@ beforeEach(async function() {
     );
     tokens[user[0]] = createToken(user[0], user[6]);
   }
+  
+  
 });
 
 describe("POST /auth/register", function() {
@@ -55,6 +57,27 @@ describe("POST /auth/register", function() {
     expect(username).toBe("new_user");
     expect(admin).toBe(false);
   });
+
+  // Test for bug 2
+  test("should make admin as true if field provided as true", async function() {
+    const response = await request(app)
+    .post("/auth/register")
+      .send({
+        username: "new_user2",
+        password: "new_password",
+        first_name: "new_first",
+        last_name: "new_last",
+        email: "new@newuser.com",
+        phone: "1233211221",
+        admin: true
+      });
+    expect(response.statusCode).toBe(201);
+    expect(response.body).toEqual({ token: expect.any(String) });
+
+    let { username, admin } = jwt.verify(response.body.token, SECRET_KEY);
+    expect(username).toBe("new_user2");
+    expect(admin).toBe(true);
+  })
 
   test("should not allow a user to register with an existing username", async function() {
     const response = await request(app)
@@ -90,11 +113,30 @@ describe("POST /auth/login", function() {
     expect(username).toBe("u1");
     expect(admin).toBe(false);
   });
+
+// Test for bug 3
+  test("should disallow an incorrect username/password to log in", async function() {
+    const response = await request(app)
+      .post("/auth/login")
+      .send({
+        username: "u1",
+        password: "pwd1as"
+      });
+    expect(response.statusCode).toBe(401);
+  });
 });
 
 describe("GET /users", function() {
   test("should deny access if no token provided", async function() {
     const response = await request(app).get("/users");
+    expect(response.statusCode).toBe(401);
+  });
+
+  //test for bug 4
+  test("should deny access if token is tampered", async function() {
+    let tamperedToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InRzX3VzZXIiLCJhZG1pbiI6ZmFsc2UsImlhdCI6MTY3MTAyMzU1Mn0._1LilW8aR-Znsy9Ljc8FPJ0rNeSNUI83bvOITPDMREYasddfs";
+    const response = await request(app).get("/users")
+    .send({ _token: tamperedToken });
     expect(response.statusCode).toBe(401);
   });
 
@@ -112,6 +154,13 @@ describe("GET /users/[username]", function() {
     const response = await request(app).get("/users/u1");
     expect(response.statusCode).toBe(401);
   });
+  // test for bug 1
+  test("should throw error if user not found", async function() {
+    const response = await request(app)
+    .get("/users/u109")
+    .send({ _token: tokens.u1 });
+    expect(response.statusCode).toBe(404);
+  });
 
   test("should return data on u1", async function() {
     const response = await request(app)
@@ -127,6 +176,8 @@ describe("GET /users/[username]", function() {
     });
   });
 });
+
+  
 
 describe("PATCH /users/[username]", function() {
   test("should deny access if no token provided", async function() {
@@ -156,7 +207,23 @@ describe("PATCH /users/[username]", function() {
       password: expect.any(String)
     });
   });
-
+  // test for bug 5
+  test("should patch data if patch is requested by user for the same user", async function() {
+    const response = await request(app)
+      .patch("/users/u1")
+      .send({ _token: tokens.u1, first_name: "la-new-fn1" }); // u1 is not admin
+    expect(response.statusCode).toBe(200);
+    expect(response.body.user).toEqual({
+      username: "u1",
+      first_name: "la-new-fn1",
+      last_name: "ln1",
+      email: "email1",
+      phone: "phone1",
+      admin: false,
+      password: expect.any(String)
+    });
+  });
+  // test for bug 6
   test("should disallowing patching not-allowed-fields", async function() {
     const response = await request(app)
       .patch("/users/u1")

@@ -31,6 +31,22 @@ function requireAdmin(req, res, next) {
   }
 }
 
+/** Fixes Bug 5
+ * Authorization Middleware: Requires that user is either admin or user matches route param
+ */
+
+function ensureAdminOrUser(req, res, next) {
+  try {
+    if (req.curr_admin || req.curr_username === req.params.username) {
+      return next();
+    } else {
+      return next({ status: 401, message: 'Unauthorized' });
+    }
+  } catch(e) {
+      return next(e);
+  }
+}
+
 /** Authentication Middleware: put user on request
  *
  * If there is a token, verify it, get payload (username/admin),
@@ -48,7 +64,8 @@ function authUser(req, res, next) {
   try {
     const token = req.body._token || req.query._token;
     if (token) {
-      let payload = jwt.decode(token);
+      // Bug 4 resolution
+      let payload = jwt.verify(token, SECRET_KEY);
       req.curr_username = payload.username;
       req.curr_admin = payload.admin;
     }
@@ -62,5 +79,6 @@ function authUser(req, res, next) {
 module.exports = {
   requireLogin,
   requireAdmin,
+  ensureAdminOrUser,
   authUser
 };

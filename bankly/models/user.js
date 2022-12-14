@@ -8,38 +8,40 @@ class User {
 
 /** Register user with data. Returns new user data. */
 
-  static async register({username, password, first_name, last_name, email, phone}) {
+  static async register({username, password, first_name, last_name, email, phone, admin=false}) {
+    // Bug 2 resolution
     const duplicateCheck = await db.query(
       `SELECT username 
         FROM users 
         WHERE username = $1`,
       [username]
     );
-
+    
     if (duplicateCheck.rows[0]) {
       throw new ExpressError(
         `There already exists a user with username '${username}'`,
         400
       );
     }
-
+    
     const hashedPassword = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
-
+    
     const result = await db.query(
       `INSERT INTO users 
-          (username, password, first_name, last_name, email, phone) 
-        VALUES ($1, $2, $3, $4, $5, $6) 
-        RETURNING username, password, first_name, last_name, email, phone`,
+          (username, password, first_name, last_name, email, phone, admin) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        RETURNING username, password, first_name, last_name, email, phone, admin`,
       [
         username,
         hashedPassword,
         first_name,
         last_name,
         email,
-        phone
+        phone,
+        admin
       ]
     );
-
+    
     return result.rows[0];
   }
 
@@ -65,12 +67,16 @@ class User {
     );
 
     const user = result.rows[0];
-
-    if (user && (await bcrypt.compare(password, user.password))) {
-      return user;
-    } else {
-      throw new ExpressError('Cannot authenticate', 401);
+    let isValid = await bcrypt.compare(password, user.password);
+    
+    // Bug 3 resolution
+    if (user) {
+      if(isValid === true) {
+        delete user.password
+        return user;
+      }
     }
+    throw new ExpressError('Cannot authenticate', 401);
   }
 
   /** Returns list of user info:
